@@ -33,12 +33,9 @@ pub extern "C" fn kernel_main() -> ! {
 
     serial::println!("Boot count: {}", boot_cnt);
 
-    let s = serial::read_line();
-    serial::println!("{}", s);
-
     sector_buf.write().unwrap();
 
-    idle();
+    shell::run();
 }
 
 fn init_drivers() {

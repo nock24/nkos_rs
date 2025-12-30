@@ -9,7 +9,7 @@ unsafe extern "C" {
 pub fn init() {
     let code = unsafe { sd_init() };
     if code != 0 {
-        panic!("SD initialisation error.");
+        panic!("SD initialisation error");
     }
 }
 

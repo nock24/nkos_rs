@@ -1,4 +1,3 @@
-use core::fmt;
 use alloc::{
     string::String,
     vec::Vec,
@@ -17,8 +16,8 @@ pub fn init() {
 
 }
 
-pub fn write(s: &str) {
-    for &c in s.as_bytes() {
+pub fn write(str: &str) {
+    for &c in str.as_bytes() {
         unsafe {
             if c == b'\n' {
                 uart_send(b'\r');
@@ -40,8 +39,8 @@ macro_rules! println {
     () => {{
         $crate::drivers::serial::write("\n");
     }};
-    ($fmt:expr) => {{
-        let formatted = format!(concat!($fmt, "\n"));
+    ($str:expr) => {{
+        let formatted = format!(concat!($str, "\n"));
         $crate::drivers::serial::write(formatted.as_str());
     }};
     ($fmt:expr, $($arg:tt)*) => {{
@@ -55,21 +54,29 @@ pub fn read_char() -> u8 {
     unsafe { uart_getc() }
 }
 
+pub fn write_char(c: u8) {
+    unsafe { uart_send(c) }
+}
+
 const DEL: u8 = b'\x7F';
 const BACKSPACE: u8 = b'\x08';
 
-pub fn read_line_raw() -> Vec<u8> {
+pub fn backspace() {
+    write_char(BACKSPACE);
+    write_char(b' ');
+    write_char(BACKSPACE);
+}
+
+pub fn read_line_utf8() -> Vec<u8> {
     let mut chars = Vec::new();
     loop {
         let c = read_char();
+        write_char(c);
 
         match c {
             b'\n' => break,
             DEL | BACKSPACE => {
-                unsafe {
-                    uart_send(BACKSPACE);
-                    uart_send(BACKSPACE);
-                }
+                backspace();
                 _ = chars.pop();
             },
             _ => chars.push(c),
@@ -79,5 +86,5 @@ pub fn read_line_raw() -> Vec<u8> {
 }
 
 pub fn read_line() -> String {
-    unsafe { String::from_utf8_unchecked(read_line_raw()) }
+    unsafe { String::from_utf8_unchecked(read_line_utf8()) }
 }
