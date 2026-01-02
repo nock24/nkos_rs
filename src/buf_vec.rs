@@ -6,7 +6,13 @@ use core::{
     fmt,
     marker::Copy,
     ops::{Deref, DerefMut},
+    result,
 };
+
+pub struct BufVec<T, const N: usize> {
+    buf: [MaybeUninit<T>; N],
+    len: usize,
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -14,10 +20,7 @@ pub enum Error {
     Empty,
 }
 
-pub struct BufVec<T, const N: usize> {
-    buf: [MaybeUninit<T>; N],
-    len: usize,
-}
+pub type Result<T> = result::Result<T, Error>;
 
 impl<T, const N: usize> BufVec<T, N>
 where
@@ -50,7 +53,7 @@ where
         }
     }
 
-    pub fn push(&mut self, item: T) -> Result<(), Error> {
+    pub fn push(&mut self, item: T) -> Result<()> {
         if self.len >= N {
             return Err(Error::Full);
         }
@@ -60,7 +63,7 @@ where
         Ok(())
     }
 
-    pub fn pop(&mut self) -> Result<T, Error> {
+    pub fn pop(&mut self) -> Result<T> {
         if self.len == 0 {
             return Err(Error::Empty);
         }
@@ -69,7 +72,7 @@ where
         unsafe { Ok(self.buf[self.len].assume_init()) }
     }
 
-    pub fn insert(&mut self, item: T, idx: usize) -> Result<(), Error> {
+    pub fn insert(&mut self, item: T, idx: usize) -> Result<()> {
         if self.len >= N {
             return Err(Error::Full);
         }
@@ -95,14 +98,14 @@ where
         Some(item)
     }
 
-    pub const fn as_slice(&self) -> &[T] {
+    pub fn as_slice(&self) -> &[T] {
         unsafe { slice::from_raw_parts(
             self.buf.as_ptr() as *const T,
             self.len,
         ) }
     }
 
-    pub const fn as_mut_slice(&mut self) -> &mut [T] {
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
         unsafe { slice::from_raw_parts_mut(
             self.buf.as_mut_ptr() as *mut T,
             self.len,

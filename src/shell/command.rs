@@ -1,15 +1,20 @@
-use alloc::vec::Vec;
+use core::result;
+use alloc::{vec::Vec, boxed::Box};
 
-use crate::drivers::serial;
+use crate::drivers::{
+    serial,
+    sd,
+};
 
 pub trait Command<'a> {
-    const IDENT: &'static [u8];
-
-    fn parse(args: &'a [u8]) -> Result<impl Command<'a>, &'static str>;
-    fn run(self);
+    fn run(&self);
+    fn parse(args_str: &'a [u8]) -> Result<'a> where Self: Sized;
+    fn ident() -> &'static [u8] where Self: Sized;
 }
 
-pub fn parse_cmd<'a>(str: &'a Vec<u8>) -> Result<impl Command<'a>, &'static str> {
+pub type Result<'a> = result::Result<Box<dyn Command<'a> + 'a>, &'static str>;
+
+pub fn parse<'a>(str: &'a Vec<u8>) -> Result<'a> {
     let Some(ident_start) = skip_whitespace(str, 0) else {
         return Err("");
     };
@@ -20,21 +25,34 @@ pub fn parse_cmd<'a>(str: &'a Vec<u8>) -> Result<impl Command<'a>, &'static str>
     } else {
         &[]
     };
-
-    match &str[ident_start..ident_end] {
-        Echo::IDENT => Echo::parse(args_str),
-        _ => Err("Invalid command."),
-    }
+    
+    let ident = &str[ident_start..ident_end];
+    parse_from_ident(ident, args_str)
 } 
+
+fn parse_from_ident<'a>(ident: &'a [u8], args_str: &'a [u8]) -> Result<'a> {
+    if ident == Echo::ident() {
+        Echo::parse(args_str)
+    } else if ident == BootCnt::ident() {
+        BootCnt::parse(args_str)
+    } else {
+        Err("Invalid command.")
+    }
+}
 
 struct Echo<'a> {
     str: &'a str,
 }
 
 impl<'a> Command<'a> for Echo<'a> {
-    const IDENT: &'static [u8] = b"echo";
+    fn run(&self) {
+        serial::println!("{}", self.str);
+    }
 
-    fn parse(args_str: &'a [u8]) -> Result<impl Command<'a>, &'static str> {
+    fn parse(args_str: &'a [u8]) -> Result<'a>
+    where 
+        Self: Sized,
+    {
         if args_str.len() == 0 {
             return Err("Provide string argument.")
         };
@@ -51,13 +69,70 @@ impl<'a> Command<'a> for Echo<'a> {
         }
 
         let str = &args_str[1..end_idx];
-        Ok(Self {
+        Ok(Box::new(Self {
             str: unsafe { str::from_utf8_unchecked(str) },
-        })
+        }))
     }
 
-    fn run(self) {
-        serial::println!("{}", self.str);
+    fn ident() -> &'static [u8]
+    where 
+        Self: Sized,
+    {
+        b"echo"
+    }
+}
+
+struct BootCnt {
+    reset: bool,
+}
+
+impl<'a> Command<'a> for BootCnt {
+    fn run(&self) {
+        let mut buf = sd::sector_buf!(0, 1);
+
+        if let Err(e) = buf.read() {
+            assert_eq!(e, sd::Error::Read);
+            serial::println!("SD read error.");
+        }
+
+        let boot_cnt: &mut usize = buf.get_mut_val(0).unwrap();
+
+        if self.reset {
+            *boot_cnt = 0;
+            if let Err(e) = buf.write() {
+                assert_eq!(e, sd::Error::Write);
+                serial::println!("SD write error.");
+            }
+            serial::println!("Boot count reset.");
+        } else {
+            serial::println!("Boot count: {}", *boot_cnt);
+        }
+    }
+
+    fn parse(args_str: &'a [u8]) -> Result<'a>
+    where
+        Self: Sized,
+    {
+        if args_str.len() == 0 {
+            Ok(Box::new(Self {
+                reset: false,
+            }))
+        } else {
+            let end_idx = skip_chars(args_str, 0).unwrap_or(args_str.len());
+            match &args_str[..end_idx] {
+                b"reset" => Ok(Box::new(Self {
+                    reset: true,
+                })),
+                _ => Err("Invalid argument."),
+            }
+        }
+    }
+
+    fn ident() -> &'static [u8]
+    where
+        Self: Sized,
+    {
+        b"bootcnt"
     }
 }
 

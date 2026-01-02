@@ -27,5 +27,6 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/c");
     println!("cargo:rerun-if-changed=src/boot/boot.S");
+    println!("cargo:rerun-if-changed=linker.ld");
     println!("cargo:rustc-link-arg=-Tlinker.ld");
 }

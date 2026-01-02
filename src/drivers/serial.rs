@@ -9,6 +9,7 @@ unsafe extern "C" {
     fn uart_send(c: u8);
     fn uart_getc() -> u8;
     fn uart_puts(s: *const u8);
+    fn uart_hex(x: u32);
 }
 
 pub fn init() {
@@ -50,12 +51,16 @@ macro_rules! println {
 }
 pub(crate) use println;
 
+pub fn write_hex(x: u32) {
+    unsafe { uart_hex(x); }
+}
+
 pub fn read_char() -> u8 {
     unsafe { uart_getc() }
 }
 
 pub fn write_char(c: u8) {
-    unsafe { uart_send(c) }
+    unsafe { uart_send(c); }
 }
 
 const DEL: u8 = b'\x7F';

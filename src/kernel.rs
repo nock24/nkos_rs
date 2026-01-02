@@ -1,14 +1,14 @@
 #![no_std]
 #![no_main]
 
-#[allow(unused_imports)]
-#[macro_use]
-extern crate alloc;
-
 use core::{
     panic::PanicInfo,
     arch::asm,
 };
+
+#[allow(unused_imports)]
+#[macro_use]
+extern crate alloc;
 
 mod linker_ptrs;
 mod drivers;
@@ -18,20 +18,20 @@ mod shell;
 
 use drivers::{
     serial,
-    sd::{self, SectorBuf},
+    sd,
 };
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
     init_drivers();
 
-    let mut sector_buf = SectorBuf::new(0, 1);
+    let mut sector_buf = sd::sector_buf!(0, 1);
     sector_buf.read().unwrap();
 
     let boot_cnt: &mut usize = sector_buf.get_mut_val(0).unwrap();
     *boot_cnt += 1;
 
-    serial::println!("Boot count: {}", boot_cnt);
+    serial::println!("Boot count: {}", *boot_cnt);
 
     sector_buf.write().unwrap();
 

@@ -7,8 +7,9 @@ use core::{
 };
 
 use crate::{
-    linker_ptrs::{heap_start, heap_end},
     buf_vec::BufVec,
+    drivers::serial,
+    linker_ptrs::{heap_size, heap_start},
 };
 
 #[global_allocator]
@@ -36,8 +37,8 @@ impl<const N: usize> Heap<N> {
         } }
     }
 
-    pub fn max_size(&self) -> usize {
-        unsafe { heap_end() as usize - heap_start() as usize }
+    fn max_size(&self) -> usize {
+        unsafe { heap_size() }
     }
 
     pub fn add_size(&mut self, n: usize) {
@@ -90,7 +91,7 @@ impl<const N: usize> Heap<N> {
 
         let align_offset = self.align_offset(chunk.offset, layout);
 
-        let opt_extra_before = if align_offset > 0 {
+        let extra_before = if align_offset > 0 {
             Some(Chunk {
                 offset: chunk.offset,
                 size: align_offset,
@@ -104,7 +105,7 @@ impl<const N: usize> Heap<N> {
         chunk.size -= align_offset;
 
         let extra_size = chunk.size - layout.size();
-        let opt_extra_after = if extra_size > 0 {
+        let extra_after = if extra_size > 0 {
             chunk.size = layout.size();
             Some(Chunk {
                 offset: chunk.offset + chunk.size,
@@ -115,21 +116,55 @@ impl<const N: usize> Heap<N> {
             None
         };
 
-        let ptr = self.chunk_to_ptr(&chunk);
         self.chunks[idx] = chunk;
+        let ptr = self.chunk_to_ptr(&chunk);
 
-        if let Some(extra_before) = opt_extra_before {
+        if let Some(extra_before) = extra_before {
             self.insert_chunk(extra_before, idx);
-            if let Some(extra_after) = opt_extra_after {
+            if let Some(extra_after) = extra_after {
                 self.insert_chunk(extra_after, idx+2);
             }
         } else {
-            if let Some(extra_after) = opt_extra_after {
+            if let Some(extra_after) = extra_after {
                 self.insert_chunk(extra_after, idx+1);
             }
         }
 
         ptr
+    }
+
+    fn defrag(&mut self) {
+        if self.chunks.len() <= 1 {
+            return;
+        }
+
+        let mut i = 0;
+        while i < self.chunks.len() - 1 {
+            if !(self.chunks[i].free && self.chunks[i+1].free) {
+                i += 1;
+                continue;
+            }
+
+            let other_chunk = self.chunks.remove(i+1).unwrap();
+            self.chunks[i].size += other_chunk.size;
+        }
+    }
+
+    fn debug_chunks(&self, context: &'static str) {
+        serial::write("["); serial::write(context); serial::write("]\n");
+
+        for (i, chunk) in self.chunks.iter().enumerate() {
+            serial::write("Chunk "); serial::write_hex(i as u32);
+            serial::write("\n    offset: "); serial::write_hex(chunk.offset as u32);
+            serial::write("\n    size: "); serial::write_hex(chunk.size as u32);
+            serial::write("\n    free: ");
+            serial::write(if chunk.free {
+                "true"
+            } else {
+                "false"
+            });
+            serial::write("\n");
+        }
     }
 }
 
@@ -159,12 +194,13 @@ unsafe impl<const N: usize> GlobalAlloc for Allocator<N> {
             heap.layout_chunk(idx, layout)
         } else {
             let align_offset = heap.align_offset(heap.cur_size, layout);
+            let offset = heap.cur_size;
+            heap.add_size(align_offset + layout.size());
             heap.push_chunk(Chunk {
-                offset: heap.cur_size,
+                offset,
                 size: align_offset + layout.size(),
                 free: true,
             });
-            heap.add_size(align_offset + layout.size());
             heap.layout_chunk(heap.chunks.len() - 1, layout)
         }
     }
@@ -175,9 +211,10 @@ unsafe impl<const N: usize> GlobalAlloc for Allocator<N> {
         let idx = heap.chunks.iter()
             .position(|chunk| heap.chunk_to_ptr(chunk) == ptr)
             .unwrap();
-        heap.chunks[idx].free = true;
+        let chunk = &mut heap.chunks[idx];
+        chunk.free = true;
 
-        // TODO: Defrag heap after.
+        heap.defrag();
     }
 }
 

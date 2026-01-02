@@ -1,11 +1,24 @@
 SECTIONS
 {
     . = 0x80000;
-    .text : { KEEP(*(.text.boot)) *(.text .text.* .gnu.linkonce.t*) }
-    .rodata : { *(.rodata .rodata.* .gnu.linkonce.r*) }
-    PROVIDE(_data = .);
-    .data : { *(.data .data.* .gnu.linkonce.d*) }
-    .bss (NOLOAD) : {
+
+    .text :
+    {
+        KEEP(*(.text.boot)) *(.text .text.*)
+    }
+
+    .rodata :
+    {
+        *(.rodata .rodata.*)
+    }
+
+    .data :
+    {
+        *(.data .data.*)
+    }
+
+    .bss (NOLOAD) :
+    {
         . = ALIGN(16);
         __bss_start = .;
         *(.bss .bss.*)
@@ -13,12 +26,14 @@ SECTIONS
         __bss_end = .;
     }
 
-    .heap : {
-        __heap_start = .;
-        . = . + 0x1000;
-        __heap_end = .;
-    }
+    __bss_size = __bss_end - __bss_start;
 
-   /DISCARD/ : { *(.comment) *(.gnu*) *(.note*) *(.eh_frame*) }
+    . = ALIGN(16);
+    __heap_start = .;
+    __heap_size = 32M;
+    __heap_end = __heap_start + __heap_size;
+
+    __stack_top = 0x40000000;
+
+    /DISCARD/ : { *(.comment) *(.gnu*) *(.note*) *(.eh_frame*) }
 }
-__bss_size = (__bss_end - __bss_start)>>3;
