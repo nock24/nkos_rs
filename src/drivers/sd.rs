@@ -19,10 +19,9 @@ pub const SECTOR_SIZE: usize = 512;
 pub struct SectorBuf<const BYTES: usize> {
     buf: Box<AlignedBuf<BYTES>>,
     start_sector: u32,
-    sectors: u32,
 }
 
-#[repr(align(32))]
+#[repr(C, align(32))]
 struct AlignedBuf<const N: usize> {
     buf: [u8; N],
 }
@@ -35,18 +34,44 @@ macro_rules! sector_buf {
 }
 pub(crate) use sector_buf;
 
+pub trait SectorLayout<const SECTORS: usize> {}
+
+macro_rules! sector_layout {
+    {
+        $vis:vis $name:ident {
+            $($f:ident : $t:ty),+ $(,)?
+        }
+    } => {
+        #[repr(C)]
+        $vis struct $name {
+            $(pub $f: $t),+
+        }
+
+        const _: () = {
+            assert!(core::mem::align_of::<$name>() <= 32);
+
+            const SIZE: usize = core::mem::size_of::<$name>();
+            const SECTOR_SIZE: usize = $crate::drivers::sd::SECTOR_SIZE;
+            const SECTORS: usize = SIZE.div_ceil(SECTOR_SIZE);
+
+            impl $crate::drivers::sd::SectorLayout<SECTORS> for $name {}
+        };
+    }
+}
+pub(crate) use sector_layout;
+
 impl<const N: usize> AlignedBuf<N> {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             buf: [0; N],
         }
     }
 
-    pub fn as_ptr(&self) -> *const u8 {
+    fn as_ptr(&self) -> *const u8 {
         self.buf.as_ptr()
     }
 
-    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+    fn as_mut_ptr(&mut self) -> *mut u8 {
         self.buf.as_mut_ptr()
     }
 }
@@ -61,18 +86,19 @@ pub type Result = result::Result<(), Error>;
 
 impl<const BYTES: usize> SectorBuf<BYTES> {
     pub fn new(start_sector: usize) -> Self {
-        assert!(BYTES % SECTOR_SIZE == 0);
+        const { assert!(BYTES % SECTOR_SIZE == 0); }
 
         Self {
             buf: Box::new(AlignedBuf::new()),
             start_sector: start_sector as u32,
-            sectors: (BYTES / SECTOR_SIZE) as u32,
         }
     }
 
+    const SECTORS: usize = BYTES / SECTOR_SIZE;
+
     pub fn read(&mut self) -> Result {
         let code = unsafe {
-            sd_readblock(self.start_sector, self.buf.as_mut_ptr(), self.sectors)
+            sd_readblock(self.start_sector, self.buf.as_mut_ptr(), Self::SECTORS as u32)
         };
         if code == 0 {
             Err(Error::Read)
@@ -83,7 +109,7 @@ impl<const BYTES: usize> SectorBuf<BYTES> {
 
     pub fn write(&mut self) -> Result {
         let code = unsafe {
-            sd_writeblock(self.buf.as_mut_ptr(), self.start_sector, self.sectors)
+            sd_writeblock(self.buf.as_mut_ptr(), self.start_sector, Self::SECTORS as u32)
         };
         if code == 0 {
             Err(Error::Write)
@@ -92,13 +118,42 @@ impl<const BYTES: usize> SectorBuf<BYTES> {
         }
     }
 
+    pub fn as_layout<T, const N: usize>(&self) -> &T
+    where
+        T: SectorLayout<N>,
+    {
+        const { assert!(N == Self::SECTORS); }
+        
+        unsafe {
+            let ptr = self.buf.as_ptr() as *const T;
+            &*ptr
+        }
+    }
+
+    pub fn as_mut_layout<T, const N: usize>(&mut self) -> &mut T
+    where
+        T: SectorLayout<N>,
+    {
+        const { assert!(N == Self::SECTORS); }
+
+        unsafe {
+            let ptr = self.buf.as_mut_ptr() as *mut T;
+            &mut *ptr
+        }
+    }
+
+    /*
     pub fn get_val<T>(&self, offset: usize) -> Option<&T> {
         if offset >= BYTES {
             None
         } else {
             unsafe {
                 let ptr = self.buf.as_ptr().add(offset) as *const T;
-                ptr.as_ref()
+                if ptr.is_aligned() {
+                    Some(&*ptr)
+                } else {
+                    None
+                }
             }
         }
     }
@@ -109,8 +164,13 @@ impl<const BYTES: usize> SectorBuf<BYTES> {
         } else {
             unsafe {
                 let ptr = self.buf.as_mut_ptr().add(offset) as *mut T;
-                ptr.as_mut()
+                if ptr.is_aligned() {
+                    Some(&mut *ptr)
+                } else {
+                    None
+                }
             }
         }
     }
+    */
 }

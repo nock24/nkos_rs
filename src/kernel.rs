@@ -24,17 +24,7 @@ use drivers::{
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
     init_drivers();
-
-    let mut sector_buf = sd::sector_buf!(0, 1);
-    sector_buf.read().unwrap();
-
-    let boot_cnt: &mut usize = sector_buf.get_mut_val(0).unwrap();
-    *boot_cnt += 1;
-
-    serial::println!("Boot count: {}", *boot_cnt);
-
-    sector_buf.write().unwrap();
-
+    update_boot_cnt();
     shell::run();
 }
 
@@ -43,6 +33,22 @@ fn init_drivers() {
     serial::init();
     sd::init();
     serial::println!("Drivers initialised.");
+}
+
+sd::sector_layout! {
+    pub BootSector {
+        boot_cnt: u32,
+    }
+}
+
+fn update_boot_cnt() {
+    let mut buf = sd::sector_buf!(0, 1);
+    buf.read().unwrap();
+
+    let boot_sector: &mut BootSector = buf.as_mut_layout();
+    boot_sector.boot_cnt += 1;
+
+    buf.write().unwrap();
 }
 
 #[inline(always)]

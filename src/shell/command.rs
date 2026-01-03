@@ -1,20 +1,22 @@
 use core::result;
-use alloc::{vec::Vec, boxed::Box};
+use alloc::boxed::Box;
 
-use crate::drivers::{
-    serial,
-    sd,
+use crate::{
+    drivers::{
+        serial,
+        sd,
+    },
+    heap,
+    BootSector,
 };
 
 pub trait Command<'a> {
     fn run(&self);
-    fn parse(args_str: &'a [u8]) -> Result<'a> where Self: Sized;
-    fn ident() -> &'static [u8] where Self: Sized;
 }
 
 pub type Result<'a> = result::Result<Box<dyn Command<'a> + 'a>, &'static str>;
 
-pub fn parse<'a>(str: &'a Vec<u8>) -> Result<'a> {
+pub fn parse<'a>(str: &'a [u8]) -> Result<'a> {
     let Some(ident_start) = skip_whitespace(str, 0) else {
         return Err("");
     };
@@ -30,29 +32,27 @@ pub fn parse<'a>(str: &'a Vec<u8>) -> Result<'a> {
     parse_from_ident(ident, args_str)
 } 
 
+type ParseFn<'a> = fn(&'a [u8]) -> Result<'a>;
+
 fn parse_from_ident<'a>(ident: &'a [u8], args_str: &'a [u8]) -> Result<'a> {
-    if ident == Echo::ident() {
-        Echo::parse(args_str)
-    } else if ident == BootCnt::ident() {
-        BootCnt::parse(args_str)
-    } else {
-        Err("Invalid command.")
-    }
+    let parse_fn: ParseFn<'a> = match ident {
+        Echo::IDENT => Echo::parse,
+        BootCnt::IDENT => BootCnt::parse,
+        HeapChunks::IDENT => HeapChunks::parse,
+        _ => return Err("Invalid command."),
+    };
+
+    parse_fn(args_str)
 }
 
 struct Echo<'a> {
     str: &'a str,
 }
 
-impl<'a> Command<'a> for Echo<'a> {
-    fn run(&self) {
-        serial::println!("{}", self.str);
-    }
+impl<'a> Echo<'a> {
+    const IDENT: &'static [u8] = b"echo";
 
-    fn parse(args_str: &'a [u8]) -> Result<'a>
-    where 
-        Self: Sized,
-    {
+    fn parse(args_str: &'a [u8]) -> Result<'a> {
         if args_str.len() == 0 {
             return Err("Provide string argument.")
         };
@@ -73,12 +73,11 @@ impl<'a> Command<'a> for Echo<'a> {
             str: unsafe { str::from_utf8_unchecked(str) },
         }))
     }
+}
 
-    fn ident() -> &'static [u8]
-    where 
-        Self: Sized,
-    {
-        b"echo"
+impl<'a> Command<'a> for Echo<'a> {
+    fn run(&self) {
+        serial::println!("{}", self.str);
     }
 }
 
@@ -86,33 +85,10 @@ struct BootCnt {
     reset: bool,
 }
 
-impl<'a> Command<'a> for BootCnt {
-    fn run(&self) {
-        let mut buf = sd::sector_buf!(0, 1);
+impl<'a> BootCnt {
+    const IDENT: &'static [u8] = b"boot-cnt";
 
-        if let Err(e) = buf.read() {
-            assert_eq!(e, sd::Error::Read);
-            serial::println!("SD read error.");
-        }
-
-        let boot_cnt: &mut usize = buf.get_mut_val(0).unwrap();
-
-        if self.reset {
-            *boot_cnt = 0;
-            if let Err(e) = buf.write() {
-                assert_eq!(e, sd::Error::Write);
-                serial::println!("SD write error.");
-            }
-            serial::println!("Boot count reset.");
-        } else {
-            serial::println!("Boot count: {}", *boot_cnt);
-        }
-    }
-
-    fn parse(args_str: &'a [u8]) -> Result<'a>
-    where
-        Self: Sized,
-    {
+    fn parse(args_str: &'a [u8]) -> Result<'a> {
         if args_str.len() == 0 {
             Ok(Box::new(Self {
                 reset: false,
@@ -127,12 +103,49 @@ impl<'a> Command<'a> for BootCnt {
             }
         }
     }
+}
 
-    fn ident() -> &'static [u8]
-    where
-        Self: Sized,
-    {
-        b"bootcnt"
+impl<'a> Command<'a> for BootCnt {
+    fn run(&self) {
+        let mut buf = sd::sector_buf!(0, 1);
+
+        if let Err(e) = buf.read() {
+            assert_eq!(e, sd::Error::Read);
+            serial::println!("SD read error.");
+        }
+        
+        if self.reset {
+            let boot_sector: &mut BootSector = buf.as_mut_layout();
+            boot_sector.boot_cnt = 0;
+            if let Err(e) = buf.write() {
+                assert_eq!(e, sd::Error::Write);
+                serial::println!("SD write error.");
+            }
+            serial::println!("Boot count reset.");
+        } else {
+            let boot_sector: &BootSector = buf.as_layout();
+            serial::println!("Boot count: {}", boot_sector.boot_cnt);
+        }
+    }
+}
+
+struct HeapChunks;
+
+impl<'a> HeapChunks {
+    const IDENT: &'static [u8] = b"heap-chunks";
+
+    fn parse(args_str: &'a [u8]) -> Result<'a> {
+        if args_str.len() != 0 {
+            Err("Command takes no arguments.")
+        } else {
+            Ok(Box::new(Self))
+        }
+    }
+}
+
+impl<'a> Command<'a> for HeapChunks {
+    fn run(&self) {
+        heap::print_chunks();
     }
 }
 

@@ -15,21 +15,27 @@ use crate::{
 #[global_allocator]
 static ALLOCATOR: Allocator<64> = Allocator::new();
 
+pub fn print_chunks() {
+    serial::println!("HEAP CHUNKS:");
+    let heap = ALLOCATOR.get_heap();
+    heap.print_chunks();
+}
+
 #[derive(Clone, Copy)]
 struct Chunk {
-    pub offset: usize,
-    pub size: usize,
-    pub free: bool,
+    offset: usize,
+    size: usize,
+    free: bool,
 }
 
 struct Heap<const N: usize> {
     buf: *mut u8,
     cur_size: usize,
-    pub chunks: BufVec<Chunk, N>,
+    chunks: BufVec<Chunk, N>,
 }
 
 impl<const N: usize> Heap<N> {
-    pub const fn new() -> Self {
+    const fn new() -> Self {
         unsafe { Self {
             buf: heap_start(),
             cur_size: 0,
@@ -41,24 +47,24 @@ impl<const N: usize> Heap<N> {
         unsafe { heap_size() }
     }
 
-    pub fn add_size(&mut self, n: usize) {
+    fn add_size(&mut self, n: usize) {
         self.cur_size += n;
         assert!(self.cur_size <= self.max_size(), "Heap out of memory.");
     }
 
-    pub fn push_chunk(&mut self, chunk: Chunk) {
+    fn push_chunk(&mut self, chunk: Chunk) {
         self.chunks.push(chunk).expect("Heap out of chunks.");
     }
 
-    pub fn insert_chunk(&mut self, chunk: Chunk, idx: usize) {
+    fn insert_chunk(&mut self, chunk: Chunk, idx: usize) {
         self.chunks.insert(chunk, idx).expect("Heap out of chunks.");
     }
 
-    pub const fn chunk_to_ptr(&self, chunk: &Chunk) -> *mut u8 {
+    const fn chunk_to_ptr(&self, chunk: &Chunk) -> *mut u8 {
         unsafe { self.buf.add(chunk.offset) }
     }
 
-    pub const fn chunk_from_ptr(&self, ptr: *mut u8, size: usize, free: bool) -> Chunk {
+    const fn chunk_from_ptr(&self, ptr: *mut u8, size: usize, free: bool) -> Chunk {
         unsafe { Chunk {
             offset: self.buf.offset_from_unsigned(ptr),
             size,
@@ -66,14 +72,14 @@ impl<const N: usize> Heap<N> {
         } }
     }
 
-    pub fn align_offset(&self, offset: usize, layout: Layout) -> usize {
+    fn align_offset(&self, offset: usize, layout: Layout) -> usize {
         unsafe {
             let unaligned = self.buf.add(offset);
             unaligned.align_offset(layout.align())
         }
     }
 
-    pub fn useable_chunk(&self, chunk: &Chunk, layout: Layout) -> bool {
+    fn useable_chunk(&self, chunk: &Chunk, layout: Layout) -> bool {
         let align_offset = self.align_offset(chunk.offset, layout);
 
         chunk.free && align_offset < chunk.size && layout.size() <= chunk.size - align_offset
@@ -84,7 +90,7 @@ impl<const N: usize> Heap<N> {
     /// The pointer for the chunk is returned.
     /// Extra chunks before and after due to alignment and excess size are added to `self.chunks`.
 
-    pub fn layout_chunk(&mut self, idx: usize, layout: Layout) -> *mut u8 {
+    fn layout_chunk(&mut self, idx: usize, layout: Layout) -> *mut u8 {
         assert!(self.useable_chunk(&self.chunks[idx], layout));
         let mut chunk = self.chunks[idx];
         chunk.free = false;
@@ -150,20 +156,12 @@ impl<const N: usize> Heap<N> {
         }
     }
 
-    fn debug_chunks(&self, context: &'static str) {
-        serial::write("["); serial::write(context); serial::write("]\n");
-
+    fn print_chunks(&self) {
         for (i, chunk) in self.chunks.iter().enumerate() {
-            serial::write("Chunk "); serial::write_hex(i as u32);
-            serial::write("\n    offset: "); serial::write_hex(chunk.offset as u32);
-            serial::write("\n    size: "); serial::write_hex(chunk.size as u32);
-            serial::write("\n    free: ");
-            serial::write(if chunk.free {
-                "true"
-            } else {
-                "false"
-            });
-            serial::write("\n");
+            serial::println!("- Chunk {}", i);
+            serial::println!("    offset: {}", chunk.offset);
+            serial::println!("    size: {}", chunk.size);
+            serial::println!("    free: {}", chunk.free);
         }
     }
 }
@@ -172,8 +170,10 @@ struct Allocator<const N: usize> {
     heap: UnsafeCell<Heap<N>>,
 }
 
+unsafe impl<const N: usize> Sync for Allocator<N> {}
+
 impl<const N: usize> Allocator<N> {
-    pub const fn new() -> Self {
+    const fn new() -> Self {
         Self {
             heap: UnsafeCell::new(Heap::new())
         }
@@ -211,11 +211,8 @@ unsafe impl<const N: usize> GlobalAlloc for Allocator<N> {
         let idx = heap.chunks.iter()
             .position(|chunk| heap.chunk_to_ptr(chunk) == ptr)
             .unwrap();
-        let chunk = &mut heap.chunks[idx];
-        chunk.free = true;
+        heap.chunks[idx].free = true;
 
         heap.defrag();
     }
 }
-
-unsafe impl<const N: usize> Sync for Allocator<N> {}

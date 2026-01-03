@@ -1,3 +1,4 @@
+use core::fmt;
 use alloc::{
     string::String,
     vec::Vec,
@@ -28,28 +29,36 @@ pub fn write(str: &str) {
     }
 }
 
+pub struct Console;
+
+impl fmt::Write for Console {
+    fn write_str(&mut self, str: &str) -> fmt::Result {
+        write(str);
+        Ok(())
+    }
+}
+
 macro_rules! print {
     ($($arg:tt)*) => {{
-        let formatted = format!($($arg)*);
-        $crate::drivers::serial::write(formatted.as_str());
+        core::fmt::write(
+            &mut $crate::drivers::serial::Console,
+            format_args!($($arg)*),
+        ).unwrap();
     }};
 }
 pub(crate) use print;
 
 macro_rules! println {
-    () => {{
+    ($($arg:tt)*) => {{
+        $crate::drivers::serial::print!($($arg)*);
         $crate::drivers::serial::write("\n");
-    }};
-    ($str:expr) => {{
-        let formatted = format!(concat!($str, "\n"));
-        $crate::drivers::serial::write(formatted.as_str());
-    }};
-    ($fmt:expr, $($arg:tt)*) => {{
-        let formatted = format!(concat!($fmt, "\n"), $($arg)*);
-        $crate::drivers::serial::write(formatted.as_str());
     }};
 }
 pub(crate) use println;
+
+struct StackWriter<'a> {
+    buf: &'a [u8],
+}
 
 pub fn write_hex(x: u32) {
     unsafe { uart_hex(x); }

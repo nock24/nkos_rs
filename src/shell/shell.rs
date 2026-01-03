@@ -1,7 +1,5 @@
-use crate::{
-    shell::command,
-    drivers::serial,
-};
+use crate::drivers::serial;
+use super::command;
 
 pub fn run() -> ! {
     serial::println!("Starting shell...");
@@ -10,15 +8,11 @@ pub fn run() -> ! {
         serial::print!("guest@nkos [~] $ ");
 
         let str = serial::read_line_utf8();
-        let cmd = command::parse(&str);
-        handle_cmd_result(cmd);
-    }
-}
-
-fn handle_cmd_result<'a>(result: command::Result) {
-    match result {
-        Ok(cmd) => cmd.run(),
-        Err(msg) if msg.len() > 0 => serial::println!("{}", msg),
-        _ => {},
+        let cmd = command::parse(str.as_slice());
+        match cmd {
+            Ok(cmd) => cmd.run(),
+            Err(msg) if msg.len() > 0 => serial::println!("{}", msg),
+            _ => {},
+        }
     }
 }
