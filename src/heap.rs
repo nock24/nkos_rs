@@ -21,17 +21,17 @@ pub fn print_chunks() {
     heap.print_chunks();
 }
 
+struct Heap<const N: usize> {
+    buf: *mut u8,
+    cur_size: usize,
+    chunks: BufVec<Chunk, N>,
+}
+
 #[derive(Clone, Copy)]
 struct Chunk {
     offset: usize,
     size: usize,
     free: bool,
-}
-
-struct Heap<const N: usize> {
-    buf: *mut u8,
-    cur_size: usize,
-    chunks: BufVec<Chunk, N>,
 }
 
 impl<const N: usize> Heap<N> {

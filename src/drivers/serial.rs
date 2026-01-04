@@ -56,10 +56,6 @@ macro_rules! println {
 }
 pub(crate) use println;
 
-struct StackWriter<'a> {
-    buf: &'a [u8],
-}
-
 pub fn write_hex(x: u32) {
     unsafe { uart_hex(x); }
 }

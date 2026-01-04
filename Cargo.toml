@@ -8,6 +8,11 @@ name = "kernel"
 path = "src/kernel.rs"
 
 [dependencies]
+proc_macros = { path = "proc_macros" }
 
 [build-dependencies]
 cc = "1.0"
+
+[workspace]
+members = ["proc_macros"]
+resolver = "2"

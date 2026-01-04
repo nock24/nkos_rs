@@ -19,7 +19,6 @@ pub enum Error {
     Full,
     Empty,
 }
-
 pub type Result<T> = result::Result<T, Error>;
 
 impl<T, const N: usize> BufVec<T, N>

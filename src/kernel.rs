@@ -10,11 +10,14 @@ use core::{
 #[macro_use]
 extern crate alloc;
 
+#[macro_use]
+mod macros;
 mod linker_ptrs;
 mod drivers;
 mod heap;
 mod buf_vec;
 mod shell;
+//mod fs;
 
 use drivers::{
     serial,
@@ -24,7 +27,11 @@ use drivers::{
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
     init_drivers();
-    update_boot_cnt();
+
+    set_msg();
+
+    things();
+
     shell::run();
 }
 
@@ -38,15 +45,31 @@ fn init_drivers() {
 sd::sector_layout! {
     pub BootSector {
         boot_cnt: u32,
+        msg: [u8; 12],
     }
 }
 
-fn update_boot_cnt() {
-    let mut buf = sd::sector_buf!(0, 1);
+fn set_msg() {
+    let msg = b"hello world!";
+
+    let mut buf = sd::DynSectorBuf::new(0, 1);
     buf.read().unwrap();
 
-    let boot_sector: &mut BootSector = buf.as_mut_layout();
-    boot_sector.boot_cnt += 1;
+    BootSector::msg_write(buf.as_mut_dyn_buf(..), msg);
+
+    buf.write().unwrap();
+}
+
+fn things() {
+    let mut buf = sd::DynSectorBuf::new(0, 1);
+    buf.read().unwrap();
+
+    let boot_cnt = BootSector::boot_cnt(buf.as_dyn_buf(..));
+    BootSector::set_boot_cnt(buf.as_mut_dyn_buf(..), boot_cnt + 1);
+
+    let mut msg = [0; 12];
+    BootSector::msg_read(buf.as_dyn_buf(..), &mut msg);
+    serial::println!("Message: {}", core::str::from_utf8(&msg).unwrap());
 
     buf.write().unwrap();
 }
