@@ -4,6 +4,8 @@ use syn::{Ident, Type};
 
 use crate::parse::{FieldType, SectorLayout};
 
+const SECTOR_SIZE: usize = 512;
+
 pub fn expand_layout(layout: SectorLayout) -> TokenStream {
     // ---- semantic checks ----
     let mut dyn_idxs: Vec<usize> = Vec::new();
@@ -34,9 +36,9 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
     let name = &layout.name;
     let vis = &layout.vis;
 
-    // ---- compute offsets + MIN_SIZE ----
+    // ---- compute offsets + HEADER_SIZE ----
     let mut offset_expr: TokenStream = quote!(0usize);
-    let mut min_size_expr: TokenStream = quote!(0usize);
+    let mut header_size_expr: TokenStream = quote!(0usize);
     let mut offset_consts: Vec<TokenStream> = Vec::new();
 
     let mut seen_fields: Vec<Ident> = Vec::new();
@@ -67,7 +69,7 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
                     .to_compile_error();
                 };
 
-                min_size_expr = quote!(#min_size_expr + core::mem::size_of::<#ty>());
+                header_size_expr = quote!(#header_size_expr + core::mem::size_of::<#ty>());
                 offset_expr = quote!(#offset_expr + core::mem::size_of::<#ty>());
             }
 
@@ -80,10 +82,10 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
                     .to_compile_error();
                 };
 
-                let n = *len;
-                min_size_expr =
-                    quote!(#min_size_expr + (#n * core::mem::size_of::<#elem_ty>()));
-                offset_expr = quote!(#offset_expr + (#n * core::mem::size_of::<#elem_ty>()));
+                let len = *len;
+                header_size_expr =
+                    quote!(#header_size_expr + (#len * core::mem::size_of::<#elem_ty>()));
+                offset_expr = quote!(#offset_expr + (#len * core::mem::size_of::<#elem_ty>()));
             }
 
             FieldType::DynArr { elem_ty, len_ident } => {
@@ -109,7 +111,7 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
                     len_ident: len_ident.clone(),
                 });
 
-                // dynamic does not contribute to MIN_SIZE and does not advance offset_expr
+                // dynamic does not contribute to HEADER_SIZE and does not advance offset_expr
             }
         }
 
@@ -147,7 +149,7 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
             FieldType::FixedArr { elem_ty, len } => {
                 let elem_bits = unsigned_bits(elem_ty).unwrap();
                 let elem_size = (elem_bits / 8) as usize;
-                let n = *len;
+                let len = *len;
 
                 let len_fn = format_ident!("{}_len", fname);
                 let get_fn = format_ident!("{}_get", fname);
@@ -161,28 +163,28 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
                     write_int_expr(elem_bits, quote!(Self::#off_ident + i * #elem_size));
 
                 accessors.push(quote! {
-                    pub fn #len_fn() -> usize { #n }
+                    pub fn #len_fn() -> usize { #len }
 
                     pub fn #get_fn(buf: &[u8], i: usize) -> #elem_ty {
-                        assert!(i < #n, "index out of range");
+                        assert!(i < #len, "index out of range");
                         #read_elem
                     }
 
                     pub fn #set_fn(buf: &mut [u8], i: usize, v: #elem_ty) {
-                        assert!(i < #n, "index out of range");
+                        assert!(i < #len, "index out of range");
                         #write_elem
                     }
 
                     pub fn #read_fn(buf: &[u8], dst: &mut [#elem_ty]) {
-                        assert!(dst.len() == #n, "wrong output length");
-                        for i in 0..#n {
+                        assert!(dst.len() == #len, "wrong output length");
+                        for i in 0..#len {
                             dst[i] = Self::#get_fn(buf, i);
                         }
                     }
 
                     pub fn #write_fn(buf: &mut [u8], src: &[#elem_ty]) {
-                        assert!(src.len() == #n, "wrong input length");
-                        for i in 0..#n {
+                        assert!(src.len() == #len, "wrong input length");
+                        for i in 0..#len {
                             Self::#set_fn(buf, i, src[i]);
                         }
                     }
@@ -196,15 +198,14 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
     }
 
     // ---- dynamic array accessors + validate ----
-    let (dyn_accessors, validate_fn) = if let Some(di) = dyn_info {
+    let (dyn_accessors, general_fns) = if let Some(di) = dyn_info {
         let field_name = di.field_name;
         let elem_ty = di.elem_ty;
         let len_ident = di.len_ident;
 
         let field_off_ident = format_ident!("{}_OFFSET", field_name.to_string().to_uppercase());
-        let len_off_ident = format_ident!("{}_OFFSET", len_ident.to_string().to_uppercase());
 
-        let Some(len_bits) = find_fixed_field_bits(&layout, &len_ident) else {
+        let Some(_len_bits) = find_fixed_field_bits(&layout, &len_ident) else {
             return syn::Error::new_spanned(
                 len_ident,
                 "length field must be a fixed unsigned int: u8/u16/u32/u64",
@@ -215,13 +216,12 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
         let elem_bits = unsigned_bits(&elem_ty).unwrap();
         let elem_size = (elem_bits / 8) as usize;
 
-        let len_read_expr = read_int_expr(len_bits, quote!(Self::#len_off_ident));
-
-        let len_fn = format_ident!("{}_len", field_name);
+        let len_fn = len_ident.clone();
         let bytes_fn = format_ident!("{}_bytes", field_name);
         let get_fn = format_ident!("{}_get", field_name);
         let set_fn = format_ident!("{}_set", field_name);
         let read_fn = format_ident!("{}_read", field_name);
+        let boxed_fn = format_ident!("{}_boxed", field_name);
         let write_fn = format_ident!("{}_write", field_name);
 
         let read_elem_expr =
@@ -230,87 +230,103 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
             write_int_expr(elem_bits, quote!(Self::#field_off_ident + i * #elem_size));
 
         let dyn_accessors = quote! {
-            pub fn #len_fn(buf: &[u8]) -> usize {
-                (#len_read_expr) as usize
-            }
-
             pub fn #bytes_fn(buf: &[u8]) -> usize {
-                Self::#len_fn(buf) * #elem_size
+                Self::#len_fn(buf) as usize * #elem_size
             }
 
             pub fn #get_fn(buf: &[u8], i: usize) -> #elem_ty {
-                let n = Self::#len_fn(buf);
-                assert!(i < n, "index out of range");
+                let len = Self::#len_fn(buf) as usize;
+                assert!(i < len, "index out of range");
                 #read_elem_expr
             }
 
             pub fn #set_fn(buf: &mut [u8], i: usize, v: #elem_ty) {
-                let n = Self::#len_fn(buf);
-                assert!(i < n, "index out of range");
+                let len = Self::#len_fn(buf) as usize;
+                assert!(i < len, "index out of range");
                 #write_elem_expr
             }
 
             pub fn #read_fn(buf: &[u8], dst: &mut [#elem_ty]) {
-                let n = Self::#len_fn(buf);
-                assert!(dst.len() == n, "wrong output length");
-                for i in 0..n {
+                let len = Self::#len_fn(buf) as usize;
+                assert!(dst.len() == len, "wrong output length");
+                for i in 0..len {
                     dst[i] = Self::#get_fn(buf, i);
                 }
             }
 
             pub fn #write_fn(buf: &mut [u8], src: &[#elem_ty]) {
-                let n = Self::#len_fn(buf);
-                assert!(src.len() == n, "wrong input length");
-                for i in 0..n {
+                let len = Self::#len_fn(buf) as usize;
+                assert!(src.len() == len, "wrong input length");
+                for i in 0..len {
                     Self::#set_fn(buf, i, src[i]);
                 }
             }
+
+            pub fn #boxed_fn(buf: &[u8]) -> alloc::boxed::Box<[#elem_ty]> {
+                let len = Self::#len_fn(buf) as usize;
+                let mut arr = alloc::vec![0; len].into_boxed_slice();
+                Self::#read_fn(buf, arr.as_mut());
+                arr
+            }
         };
 
-        let validate_fn = quote! {
+        let general_fns = quote! {
             pub fn validate(buf: &[u8]) -> bool {
-                if buf.len() < Self::MIN_SIZE {
+                if buf.len() < Self::HEADER_SIZE {
                     return false;
                 }
-                let n = Self::#len_fn(buf);
+                let len = Self::#len_fn(buf) as usize;
 
-                let bytes = match n.checked_mul(#elem_size) {
+                let bytes = match len.checked_mul(#elem_size) {
                     Some(b) => b,
                     None => return false,
                 };
-                let need = match Self::MIN_SIZE.checked_add(bytes) {
+                let need = match Self::HEADER_SIZE.checked_add(bytes) {
                     Some(t) => t,
                     None => return false,
                 };
                 need <= buf.len()
             }
-        };
 
-        (dyn_accessors, validate_fn)
-    } else {
-        let validate_fn = quote! {
-            pub fn validate(buf: &[u8]) -> bool {
-                buf.len() >= Self::MIN_SIZE
+            pub fn sectors(buf: &[u8]) -> usize {
+                let dyn_len = Self::#len_fn(buf) as usize;
+                let dyn_bytes = dyn_len * #elem_size;
+                let total_bytes = Self::HEADER_SIZE + dyn_bytes;
+                total_bytes.div_ceil(#SECTOR_SIZE)
             }
         };
-        (quote! {}, validate_fn)
+
+        (dyn_accessors, general_fns)
+    } else {
+        let general_fns = quote! {
+            pub fn validate(buf: &[u8]) -> bool {
+                buf.len() >= Self::HEADER_SIZE
+            }
+
+            pub fn sectors() -> usize {
+                Self::HEADER_SECTORS
+            }
+        };
+        (quote! {}, general_fns)
     };
 
     // ✅ ZST + impl, containing *everything*
     quote! {
         #vis struct #name;
 
+        #[allow(dead_code)]
         impl #name {
             #(#offset_consts)*
 
-            /// Minimum required buffer length for all fixed-size fields.
-            pub const MIN_SIZE: usize = #min_size_expr;
+            /// Required buffer length for all fixed-size fields.
+            pub const HEADER_SIZE: usize = #header_size_expr;
+            pub const HEADER_SECTORS: usize = Self::HEADER_SIZE.div_ceil(#SECTOR_SIZE);
 
             #(#accessors)*
 
             #dyn_accessors
 
-            #validate_fn
+            #general_fns
         }
     }
 }

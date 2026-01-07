@@ -107,22 +107,22 @@ impl<'a> BootCnt {
 
 impl<'a> Command<'a> for BootCnt {
     fn run(&self) {
-        let mut buf = sd::DynSectorBuf::new(0, 1);
+        let mut sector_buf = sd::SectorBuf::new(0, 1);
 
-        if let Err(e) = buf.read() {
+        if let Err(e) = sector_buf.read() {
             assert_eq!(e, sd::Error::Read);
             serial::println!("SD read error.");
         }
         
         if self.reset {
-            BootSector::set_boot_cnt(buf.as_mut_dyn_buf(..), 0);
-            if let Err(e) = buf.write() {
+            BootSector::set_boot_cnt(sector_buf.as_mut_buf(..), 0);
+            if let Err(e) = sector_buf.write() {
                 assert_eq!(e, sd::Error::Write);
                 serial::println!("SD write error.");
             }
             serial::println!("Boot count reset.");
         } else {
-            let boot_cnt = BootSector::boot_cnt(buf.as_dyn_buf(..));
+            let boot_cnt = BootSector::boot_cnt(sector_buf.as_buf(..));
             serial::println!("Boot count: {}", boot_cnt);
         }
     }
