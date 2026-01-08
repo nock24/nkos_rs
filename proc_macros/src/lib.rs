@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 
-mod parse;
 mod expand;
+mod parse;
 
 #[proc_macro]
 pub fn sector_layout(input: TokenStream) -> TokenStream {

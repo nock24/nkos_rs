@@ -157,8 +157,7 @@ pub fn expand_layout(layout: SectorLayout) -> TokenStream {
                 let read_fn = format_ident!("{}_read", fname);
                 let write_fn = format_ident!("{}_write", fname);
 
-                let read_elem =
-                    read_int_expr(elem_bits, quote!(Self::#off_ident + i * #elem_size));
+                let read_elem = read_int_expr(elem_bits, quote!(Self::#off_ident + i * #elem_size));
                 let write_elem =
                     write_int_expr(elem_bits, quote!(Self::#off_ident + i * #elem_size));
 
@@ -404,4 +403,3 @@ fn write_int_expr(bits: u32, off: TokenStream) -> TokenStream {
         _ => quote! { compile_error!("unsupported int width"); },
     }
 }
-

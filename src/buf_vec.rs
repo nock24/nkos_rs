@@ -1,12 +1,11 @@
 #![allow(dead_code)]
 
 use core::{
-    mem::MaybeUninit,
-    slice,
     fmt,
     marker::Copy,
+    mem::MaybeUninit,
     ops::{Deref, DerefMut},
-    result,
+    result, slice,
 };
 
 pub struct BufVec<T, const N: usize> {
@@ -76,8 +75,8 @@ where
             return Err(Error::Full);
         }
 
-        for i in (idx+1 ..= self.len).rev() {
-            self.buf[i].write(*self.get(i-1).unwrap());
+        for i in (idx + 1..=self.len).rev() {
+            self.buf[i].write(*self.get(i - 1).unwrap());
         }
         self.len += 1;
         self.buf[idx].write(item);
@@ -90,25 +89,19 @@ where
         }
 
         let item = unsafe { self.buf[idx].assume_init() };
-        for i in idx .. self.len-1 {
-            self.buf[i].write(*self.get(i+1).unwrap());
+        for i in idx..self.len - 1 {
+            self.buf[i].write(*self.get(i + 1).unwrap());
         }
         self.len -= 1;
         Some(item)
     }
 
     pub fn as_slice(&self) -> &[T] {
-        unsafe { slice::from_raw_parts(
-            self.buf.as_ptr() as *const T,
-            self.len,
-        ) }
+        unsafe { slice::from_raw_parts(self.buf.as_ptr() as *const T, self.len) }
     }
 
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { slice::from_raw_parts_mut(
-            self.buf.as_mut_ptr() as *mut T,
-            self.len,
-        ) }
+        unsafe { slice::from_raw_parts_mut(self.buf.as_mut_ptr() as *mut T, self.len) }
     }
 }
 
@@ -137,8 +130,6 @@ where
     T: fmt::Debug + Copy,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list()
-            .entries(self.as_slice())
-            .finish()
+        f.debug_list().entries(self.as_slice()).finish()
     }
 }

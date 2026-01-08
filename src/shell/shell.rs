@@ -1,5 +1,5 @@
-use crate::drivers::serial;
 use super::command;
+use crate::drivers::serial;
 
 pub fn run() -> ! {
     serial::println!("Starting shell...");
@@ -12,7 +12,7 @@ pub fn run() -> ! {
         match cmd {
             Ok(cmd) => cmd.run(),
             Err(msg) if msg.len() > 0 => serial::println!("{}", msg),
-            _ => {},
+            _ => {}
         }
     }
 }

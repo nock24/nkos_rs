@@ -1,13 +1,10 @@
-use core::result;
 use alloc::boxed::Box;
+use core::result;
 
 use crate::{
-    drivers::{
-        serial,
-        sd,
-    },
-    heap,
     BootSector,
+    drivers::{sd, serial},
+    heap,
 };
 
 pub trait Command<'a> {
@@ -27,10 +24,10 @@ pub fn parse<'a>(str: &'a [u8]) -> Result<'a> {
     } else {
         &[]
     };
-    
+
     let ident = &str[ident_start..ident_end];
     parse_from_ident(ident, args_str)
-} 
+}
 
 type ParseFn<'a> = fn(&'a [u8]) -> Result<'a>;
 
@@ -54,7 +51,7 @@ impl<'a> Echo<'a> {
 
     fn parse(args_str: &'a [u8]) -> Result<'a> {
         if args_str.len() == 0 {
-            return Err("Provide string argument.")
+            return Err("Provide string argument.");
         };
         if args_str[0] != b'\"' {
             return Err("Expected \".");
@@ -90,15 +87,11 @@ impl<'a> BootCnt {
 
     fn parse(args_str: &'a [u8]) -> Result<'a> {
         if args_str.len() == 0 {
-            Ok(Box::new(Self {
-                reset: false,
-            }))
+            Ok(Box::new(Self { reset: false }))
         } else {
             let end_idx = skip_chars(args_str, 0).unwrap_or(args_str.len());
             match &args_str[..end_idx] {
-                b"reset" => Ok(Box::new(Self {
-                    reset: true,
-                })),
+                b"reset" => Ok(Box::new(Self { reset: true })),
                 _ => Err("Invalid argument."),
             }
         }
@@ -113,7 +106,7 @@ impl<'a> Command<'a> for BootCnt {
             assert_eq!(e, sd::Error::Read);
             serial::println!("SD read error.");
         }
-        
+
         if self.reset {
             BootSector::set_boot_cnt(sector_buf.as_mut_buf(..), 0);
             if let Err(e) = sector_buf.write() {
@@ -152,10 +145,7 @@ fn skip<P>(str: &[u8], start_idx: usize, pred: P) -> Option<usize>
 where
     P: FnMut(&u8) -> bool,
 {
-    if let Some(x) = str.iter()
-        .skip(start_idx)
-        .position(pred)
-    {
+    if let Some(x) = str.iter().skip(start_idx).position(pred) {
         Some(start_idx + x)
     } else {
         None

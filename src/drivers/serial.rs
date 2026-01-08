@@ -1,8 +1,5 @@
+use alloc::{string::String, vec::Vec};
 use core::fmt;
-use alloc::{
-    string::String,
-    vec::Vec,
-};
 
 #[allow(unused_imports)]
 unsafe extern "C" {
@@ -14,8 +11,9 @@ unsafe extern "C" {
 }
 
 pub fn init() {
-    unsafe { uart_init(); }
-
+    unsafe {
+        uart_init();
+    }
 }
 
 pub fn write(str: &str) {
@@ -57,7 +55,9 @@ macro_rules! println {
 pub(crate) use println;
 
 pub fn write_hex(x: u32) {
-    unsafe { uart_hex(x); }
+    unsafe {
+        uart_hex(x);
+    }
 }
 
 pub fn read_char() -> u8 {
@@ -65,7 +65,9 @@ pub fn read_char() -> u8 {
 }
 
 pub fn write_char(c: u8) {
-    unsafe { uart_send(c); }
+    unsafe {
+        uart_send(c);
+    }
 }
 
 const DEL: u8 = b'\x7F';
@@ -88,7 +90,7 @@ pub fn read_line_utf8() -> Vec<u8> {
             DEL | BACKSPACE => {
                 backspace();
                 _ = chars.pop();
-            },
+            }
             _ => chars.push(c),
         }
     }

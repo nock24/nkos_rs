@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-mod shell;
 mod command;
+mod shell;
 
 pub use shell::run;

@@ -1,7 +1,6 @@
 use syn::{
-    braced, bracketed,
+    Ident, LitInt, Token, Type, Visibility, braced, bracketed,
     parse::{Parse, ParseStream},
-    Ident, LitInt, Token, Type, Visibility,
 };
 
 pub struct SectorLayout {
@@ -71,4 +70,3 @@ impl Parse for SectorLayout {
         Ok(SectorLayout { vis, name, fields })
     }
 }
-

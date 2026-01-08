@@ -1,10 +1,7 @@
-use core::{
-    result,
-    str,
-};
-use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::result;
 
-use crate::drivers::sd;
+use crate::drivers::{sd, serial};
 
 pub trait File {
     fn read(&mut self) -> Result<()>;
@@ -18,7 +15,7 @@ enum FileType {
 
 pub struct TextFile {
     sector_buf: sd::SectorBuf,
-    str: Option<Box<[u8]>>,
+    str: Option<Vec<u8>>,
 }
 
 sd::sector_layout! {
@@ -49,18 +46,24 @@ impl TextFile {
         })
     }
 
-    pub fn str<'a>(&'a self) -> Option<&'a str> {
+    pub fn clear(&mut self) -> Result<()> {
+        self.sector_buf.clear();
+        self.sector_buf.write()?;
+        Ok(())
+    }
+
+    pub fn str(&self) -> Option<&str> {
         let Some(str) = &self.str else {
             return None;
         };
-        str::from_utf8(str.as_ref()).ok()
+        str::from_utf8(str.as_slice()).ok()
     }
 
-    pub fn mut_str<'a>(&'a mut self) -> Option<&'a mut str> {
+    pub fn mut_str(&mut self) -> Option<&mut Vec<u8>> {
         let Some(str) = &mut self.str else {
             return None;
         };
-        str::from_utf8_mut(str.as_mut()).ok()
+        Some(str)
     }
 }
 
@@ -73,14 +76,19 @@ impl File for TextFile {
             self.sector_buf.clear();
             Err(Error::FileWrongType)
         } else {
-            self.str = Some(TextLayout::str_boxed(self.sector_buf.as_buf(..)));
+            let boxed_str = TextLayout::str_boxed(self.sector_buf.as_buf(..));
+            self.str = Some(boxed_str.into_vec());
             Ok(())
         }
     }
 
     fn write(&mut self) -> Result<()> {
         if let Some(str) = &self.str {
-            TextLayout::str_write(self.sector_buf.as_mut_buf(..), str.as_ref());
+            TextLayout::set_str_len(self.sector_buf.as_mut_buf(..), str.len() as u8);
+            let sectors = TextLayout::sectors(self.sector_buf.as_buf(..));
+            self.sector_buf.resize(sectors);
+            assert!(TextLayout::validate(self.sector_buf.as_buf(..)));
+            TextLayout::str_write(self.sector_buf.as_mut_buf(..), str.as_slice());
         }
         self.sector_buf.write()?;
         Ok(())

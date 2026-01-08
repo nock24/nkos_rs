@@ -36,11 +36,13 @@ struct Chunk {
 
 impl<const N: usize> Heap<N> {
     const fn new() -> Self {
-        unsafe { Self {
-            buf: heap_start(),
-            cur_size: 0,
-            chunks: BufVec::new(),
-        } }
+        unsafe {
+            Self {
+                buf: heap_start(),
+                cur_size: 0,
+                chunks: BufVec::new(),
+            }
+        }
     }
 
     fn max_size(&self) -> usize {
@@ -65,11 +67,13 @@ impl<const N: usize> Heap<N> {
     }
 
     const fn chunk_from_ptr(&self, ptr: *mut u8, size: usize, free: bool) -> Chunk {
-        unsafe { Chunk {
-            offset: self.buf.offset_from_unsigned(ptr),
-            size,
-            free,
-        } }
+        unsafe {
+            Chunk {
+                offset: self.buf.offset_from_unsigned(ptr),
+                size,
+                free,
+            }
+        }
     }
 
     fn align_offset(&self, offset: usize, layout: Layout) -> usize {
@@ -85,7 +89,7 @@ impl<const N: usize> Heap<N> {
         chunk.free && align_offset < chunk.size && layout.size() <= chunk.size - align_offset
     }
 
-    /// The chunk at `idx` is changed to the correct alignment and size, and `free` is set to 
+    /// The chunk at `idx` is changed to the correct alignment and size, and `free` is set to
     /// `false` as this function is used when a chunk is being allocated to a user.
     /// The pointer for the chunk is returned.
     /// Extra chunks before and after due to alignment and excess size are added to `self.chunks`.
@@ -128,11 +132,11 @@ impl<const N: usize> Heap<N> {
         if let Some(extra_before) = extra_before {
             self.insert_chunk(extra_before, idx);
             if let Some(extra_after) = extra_after {
-                self.insert_chunk(extra_after, idx+2);
+                self.insert_chunk(extra_after, idx + 2);
             }
         } else {
             if let Some(extra_after) = extra_after {
-                self.insert_chunk(extra_after, idx+1);
+                self.insert_chunk(extra_after, idx + 1);
             }
         }
 
@@ -146,12 +150,12 @@ impl<const N: usize> Heap<N> {
 
         let mut i = 0;
         while i < self.chunks.len() - 1 {
-            if !(self.chunks[i].free && self.chunks[i+1].free) {
+            if !(self.chunks[i].free && self.chunks[i + 1].free) {
                 i += 1;
                 continue;
             }
 
-            let other_chunk = self.chunks.remove(i+1).unwrap();
+            let other_chunk = self.chunks.remove(i + 1).unwrap();
             self.chunks[i].size += other_chunk.size;
         }
     }
@@ -175,7 +179,7 @@ unsafe impl<const N: usize> Sync for Allocator<N> {}
 impl<const N: usize> Allocator<N> {
     const fn new() -> Self {
         Self {
-            heap: UnsafeCell::new(Heap::new())
+            heap: UnsafeCell::new(Heap::new()),
         }
     }
 
@@ -188,7 +192,9 @@ unsafe impl<const N: usize> GlobalAlloc for Allocator<N> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let heap = self.get_heap();
 
-        if let Some(idx) = heap.chunks.iter()
+        if let Some(idx) = heap
+            .chunks
+            .iter()
             .position(|chunk| heap.useable_chunk(chunk, layout))
         {
             heap.layout_chunk(idx, layout)
@@ -208,7 +214,9 @@ unsafe impl<const N: usize> GlobalAlloc for Allocator<N> {
     unsafe fn dealloc(&self, ptr: *mut u8, _: Layout) {
         let heap = self.get_heap();
 
-        let idx = heap.chunks.iter()
+        let idx = heap
+            .chunks
+            .iter()
             .position(|chunk| heap.chunk_to_ptr(chunk) == ptr)
             .unwrap();
         heap.chunks[idx].free = true;

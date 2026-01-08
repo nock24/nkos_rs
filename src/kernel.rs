@@ -1,10 +1,7 @@
 #![no_std]
 #![no_main]
 
-use core::{
-    panic::PanicInfo,
-    arch::asm,
-};
+use core::{arch::asm, panic::PanicInfo};
 
 #[allow(unused_imports)]
 #[macro_use]
@@ -12,23 +9,29 @@ extern crate alloc;
 
 #[macro_use]
 mod macros;
-mod linker_ptrs;
-mod drivers;
-mod heap;
 mod buf_vec;
-mod shell;
+mod drivers;
 mod fs;
+mod heap;
+mod linker_ptrs;
+mod shell;
 
-use drivers::{
-    serial,
-    sd,
-};
+use drivers::{sd, serial};
+use fs::file::{File, TextFile};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
     init_drivers();
 
     things();
+
+    let mut file = TextFile::new(2).unwrap();
+    file.read().expect("failed to read file");
+    let str = file.str().unwrap();
+    serial::println!("File contents: {}", str);
+    let str = file.mut_str().unwrap();
+    str.push(b'a');
+    file.write().expect("failed to write file");
 
     shell::run();
 }
@@ -74,7 +77,9 @@ fn things() {
 #[inline(always)]
 pub fn idle() -> ! {
     loop {
-        unsafe { asm!("wfe", options(nomem, nostack)); }
+        unsafe {
+            asm!("wfe", options(nomem, nostack));
+        }
     }
 }
 

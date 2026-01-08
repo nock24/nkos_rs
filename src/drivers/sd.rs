@@ -1,10 +1,9 @@
+use alloc::vec::Vec;
 use core::{
-    result,
     marker::Copy,
     ops::{Bound, RangeBounds},
-    slice,
+    result, slice,
 };
-use alloc::vec::Vec;
 
 pub use proc_macros::sector_layout;
 
@@ -31,7 +30,7 @@ pub struct SectorBuf {
 #[derive(Copy, Clone)]
 #[repr(C, align(32))]
 struct Sector {
-    buf: [u8; SECTOR_SIZE]
+    buf: [u8; SECTOR_SIZE],
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,24 +50,24 @@ impl SectorBuf {
 
     pub fn read(&mut self) -> Result {
         let code = unsafe {
-            sd_readblock(self.start_sector, self.mut_inner_buf_ptr(), self.sectors() as u32)
+            sd_readblock(
+                self.start_sector,
+                self.mut_inner_buf_ptr(),
+                self.sectors() as u32,
+            )
         };
-        if code == 0 {
-            Err(Error::Read)
-        } else {
-            Ok(())
-        }
+        if code == 0 { Err(Error::Read) } else { Ok(()) }
     }
 
     pub fn write(&mut self) -> Result {
         let code = unsafe {
-            sd_writeblock(self.mut_inner_buf_ptr(), self.start_sector, self.sectors() as u32)
+            sd_writeblock(
+                self.mut_inner_buf_ptr(),
+                self.start_sector,
+                self.sectors() as u32,
+            )
         };
-        if code == 0 {
-            Err(Error::Write)
-        } else {
-            Ok(())
-        }
+        if code == 0 { Err(Error::Write) } else { Ok(()) }
     }
 
     pub fn resize(&mut self, sectors: usize) {
@@ -133,6 +132,8 @@ impl SectorBuf {
 
 impl Sector {
     fn zeroed() -> Self {
-        Self { buf: [0; SECTOR_SIZE] }
+        Self {
+            buf: [0; SECTOR_SIZE],
+        }
     }
 }
