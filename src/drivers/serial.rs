@@ -16,8 +16,8 @@ pub fn init() {
     }
 }
 
-pub fn write(str: &str) {
-    for &c in str.as_bytes() {
+pub fn write(str: &[u8]) {
+    for &c in str.iter() {
         unsafe {
             if c == b'\n' {
                 uart_send(b'\r');
@@ -31,7 +31,7 @@ pub struct Console;
 
 impl fmt::Write for Console {
     fn write_str(&mut self, str: &str) -> fmt::Result {
-        write(str);
+        write(str.as_bytes());
         Ok(())
     }
 }
@@ -49,7 +49,7 @@ pub(crate) use print;
 macro_rules! println {
     ($($arg:tt)*) => {{
         $crate::drivers::serial::print!($($arg)*);
-        $crate::drivers::serial::write("\n");
+        $crate::drivers::serial::write(b"\n");
     }};
 }
 pub(crate) use println;
@@ -99,4 +99,67 @@ pub fn read_line_utf8() -> Vec<u8> {
 
 pub fn read_line() -> String {
     unsafe { String::from_utf8_unchecked(read_line_utf8()) }
+}
+
+const L_ARROW: &[u8] = b"\x1B[D";
+const R_ARROW: &[u8] = b"\x1B[C";
+const U_ARROW: &[u8] = b"\x1B[A";
+const D_ARROW: &[u8] = b"\x1B[B";
+
+pub fn cursor_left() {
+    write(L_ARROW);
+}
+
+pub fn cursor_right() {
+    write(R_ARROW);
+}
+
+pub fn cursor_up() {
+    write(U_ARROW);
+}
+
+pub fn cursor_down() {
+    write(D_ARROW);
+}
+
+pub fn move_cursor(pos: (usize, usize)) {
+    print!("\x1B[{};{}H", pos.0, pos.1);
+}
+
+pub fn cursor_home() {
+    move_cursor((1, 1));
+}
+
+pub fn clear() {
+    write(b"\x1B[2J");
+    cursor_home();
+}
+
+/// -> (rows, cols)
+pub fn dimensions() -> (usize, usize) {
+    write(b"\x1B[18t");
+    assert_eq!(read_char(), 0x1B);
+    assert_eq!(read_char(), b'[');
+    assert_eq!(read_char(), b'8');
+    assert_eq!(read_char(), b';');
+    let (rows, ch) = parse_u16();
+    assert_eq!(ch, b';');
+    let (cols, ch) = parse_u16();
+    assert_eq!(ch, b't');
+
+    (rows as usize, cols as usize)
+}
+
+fn parse_u16() -> (u16, u8) {
+    let mut n = 0;
+    loop {
+        let ch = read_char();
+        if ch < b'0' || ch > b'9' {
+            return (n, ch);
+        }
+        let digit = (ch - b'0') as u16;
+
+        n *= 10;
+        n += digit;
+    }
 }
