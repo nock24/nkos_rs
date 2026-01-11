@@ -70,8 +70,8 @@ pub fn write_char(c: u8) {
     }
 }
 
-const DEL: u8 = b'\x7F';
-const BACKSPACE: u8 = b'\x08';
+pub const DEL: u8 = b'\x7F';
+pub const BACKSPACE: u8 = b'\x08';
 
 pub fn backspace() {
     write_char(BACKSPACE);

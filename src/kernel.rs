@@ -14,6 +14,7 @@ mod drivers;
 mod fs;
 mod heap;
 mod linker_ptrs;
+mod nkvi;
 mod shell;
 
 use drivers::{sd, serial};
@@ -25,6 +26,7 @@ pub extern "C" fn kernel_main() -> ! {
 
     things();
 
+    /*
     let mut file = TextFile::new(2).unwrap();
     file.read().expect("failed to read file");
     let str = file.str().unwrap();
@@ -32,8 +34,11 @@ pub extern "C" fn kernel_main() -> ! {
     let str = file.mut_str().unwrap();
     str.push(b'a');
     file.write().expect("failed to write file");
+    */
 
-    shell::run();
+    nkvi::run();
+
+    //shell::run();
 }
 
 fn init_drivers() {
