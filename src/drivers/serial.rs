@@ -36,7 +36,7 @@ impl fmt::Write for Console {
     }
 }
 
-macro_rules! print {
+macro_rules! sprint {
     ($($arg:tt)*) => {{
         core::fmt::write(
             &mut $crate::drivers::serial::Console,
@@ -44,15 +44,13 @@ macro_rules! print {
         ).unwrap();
     }};
 }
-pub(crate) use print;
 
-macro_rules! println {
+macro_rules! sprintln {
     ($($arg:tt)*) => {{
-        $crate::drivers::serial::print!($($arg)*);
+        sprint!($($arg)*);
         $crate::drivers::serial::write(b"\n");
     }};
 }
-pub(crate) use println;
 
 pub fn write_hex(x: u32) {
     unsafe {
@@ -70,8 +68,16 @@ pub fn write_char(c: u8) {
     }
 }
 
+pub const CTRL_N: u8 = 0x0E;
+pub const CTRL_Q: u8 = 0x11;
+pub const CTRL_S: u8 = 0x13;
+
 pub const DEL: u8 = b'\x7F';
 pub const BACKSPACE: u8 = b'\x08';
+
+pub fn is_typeable(c: u8) -> bool {
+    (b' '..=b'~').contains(&c) || c == DEL || c == BACKSPACE
+}
 
 pub fn backspace() {
     write_char(BACKSPACE);
@@ -129,7 +135,7 @@ pub fn cursor_down() {
 
 /// pos: (x, y)
 pub fn move_cursor(pos: (usize, usize)) {
-    print!("\x1B[{};{}H", pos.1 + 1, pos.0 + 1);
+    sprint!("\x1B[{};{}H", pos.1 + 1, pos.0 + 1);
 }
 
 pub fn cursor_home() {
@@ -160,10 +166,10 @@ pub fn dimensions() -> (usize, usize) {
     assert_eq!(read_char(), b'[');
     assert_eq!(read_char(), b'8');
     assert_eq!(read_char(), b';');
-    let (rows, ch) = parse_u16();
-    assert_eq!(ch, b';');
-    let (cols, ch) = parse_u16();
-    assert_eq!(ch, b't');
+    let (rows, c) = parse_u16();
+    assert_eq!(c, b';');
+    let (cols, c) = parse_u16();
+    assert_eq!(c, b't');
 
     (rows as usize, cols as usize)
 }
@@ -171,11 +177,11 @@ pub fn dimensions() -> (usize, usize) {
 fn parse_u16() -> (u16, u8) {
     let mut n = 0;
     loop {
-        let ch = read_char();
-        if ch < b'0' || ch > b'9' {
-            return (n, ch);
+        let c = read_char();
+        if c < b'0' || c > b'9' {
+            return (n, c);
         }
-        let digit = (ch - b'0') as u16;
+        let digit = (c - b'0') as u16;
 
         n *= 10;
         n += digit;

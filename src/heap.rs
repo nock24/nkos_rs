@@ -8,7 +8,6 @@ use core::{
 
 use crate::{
     buf_vec::BufVec,
-    drivers::serial,
     linker_ptrs::{heap_size, heap_start},
 };
 
@@ -16,7 +15,7 @@ use crate::{
 static ALLOCATOR: Allocator<64> = Allocator::new();
 
 pub fn print_chunks() {
-    serial::println!("HEAP CHUNKS:");
+    sprintln!("HEAP CHUNKS:");
     let heap = ALLOCATOR.get_heap();
     heap.print_chunks();
 }
@@ -162,10 +161,10 @@ impl<const N: usize> Heap<N> {
 
     fn print_chunks(&self) {
         for (i, chunk) in self.chunks.iter().enumerate() {
-            serial::println!("- Chunk {}", i);
-            serial::println!("    offset: {}", chunk.offset);
-            serial::println!("    size: {}", chunk.size);
-            serial::println!("    free: {}", chunk.free);
+            sprintln!("- Chunk {}", i);
+            sprintln!("    offset: {}", chunk.offset);
+            sprintln!("    size: {}", chunk.size);
+            sprintln!("    free: {}", chunk.free);
         }
     }
 }

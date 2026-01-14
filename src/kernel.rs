@@ -7,13 +7,14 @@ use core::{arch::asm, panic::PanicInfo};
 #[macro_use]
 extern crate alloc;
 
-#[macro_use]
-mod macros;
 mod buf_vec;
+#[macro_use]
 mod drivers;
 mod fs;
 mod heap;
 mod linker_ptrs;
+#[macro_use]
+mod macros;
 mod nkvi;
 mod shell;
 
@@ -36,16 +37,13 @@ pub extern "C" fn kernel_main() -> ! {
     file.write().expect("failed to write file");
     */
 
-    nkvi::run();
-
-    //shell::run();
+    shell::run();
 }
 
 fn init_drivers() {
-    serial::println!("Initialising drivers...");
     serial::init();
     sd::init();
-    serial::println!("Drivers initialised.");
+    sprintln!("Drivers initialised.");
 }
 
 sd::sector_layout! {
@@ -74,7 +72,7 @@ fn things() {
     BootSector::set_boot_cnt(sector_buf.as_mut_buf(..), boot_cnt + 1);
 
     let msg = BootSector::msg_boxed(sector_buf.as_buf(..));
-    serial::println!("Message: {}", core::str::from_utf8(msg.as_ref()).unwrap());
+    sprintln!("Message: {}", core::str::from_utf8(msg.as_ref()).unwrap());
 
     sector_buf.write().unwrap();
 }
@@ -95,10 +93,10 @@ fn panic(info: &PanicInfo<'_>) -> ! {
     let file = location.file();
     let line = location.line();
 
-    serial::println!("\n[KERNEL PANIC]");
-    serial::println!("    Reason: {}", msg);
-    serial::println!("    File: {}", file);
-    serial::println!("    Line: {}", line);
+    sprintln!("\n[KERNEL PANIC]");
+    sprintln!("    Reason: {}", msg);
+    sprintln!("    File: {}", file);
+    sprintln!("    Line: {}", line);
 
     idle();
 }

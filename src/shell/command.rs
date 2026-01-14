@@ -1,11 +1,7 @@
 use alloc::boxed::Box;
 use core::result;
 
-use crate::{
-    BootSector,
-    drivers::{sd, serial},
-    heap,
-};
+use crate::{BootSector, drivers::sd, heap, nkvi};
 
 pub trait Command<'a> {
     fn run(&self);
@@ -36,6 +32,7 @@ fn parse_from_ident<'a>(ident: &'a [u8], args_str: &'a [u8]) -> Result<'a> {
         Echo::IDENT => Echo::parse,
         BootCnt::IDENT => BootCnt::parse,
         HeapChunks::IDENT => HeapChunks::parse,
+        Nkvi::IDENT => Nkvi::parse,
         _ => return Err("Invalid command."),
     };
 
@@ -74,7 +71,7 @@ impl<'a> Echo<'a> {
 
 impl<'a> Command<'a> for Echo<'a> {
     fn run(&self) {
-        serial::println!("{}", self.str);
+        sprintln!("{}", self.str);
     }
 }
 
@@ -104,19 +101,19 @@ impl<'a> Command<'a> for BootCnt {
 
         if let Err(e) = sector_buf.read() {
             assert_eq!(e, sd::Error::Read);
-            serial::println!("SD read error.");
+            sprintln!("SD read error.");
         }
 
         if self.reset {
             BootSector::set_boot_cnt(sector_buf.as_mut_buf(..), 0);
             if let Err(e) = sector_buf.write() {
                 assert_eq!(e, sd::Error::Write);
-                serial::println!("SD write error.");
+                sprintln!("SD write error.");
             }
-            serial::println!("Boot count reset.");
+            sprintln!("Boot count reset.");
         } else {
             let boot_cnt = BootSector::boot_cnt(sector_buf.as_buf(..));
-            serial::println!("Boot count: {}", boot_cnt);
+            sprintln!("Boot count: {}", boot_cnt);
         }
     }
 }
@@ -138,6 +135,26 @@ impl<'a> HeapChunks {
 impl<'a> Command<'a> for HeapChunks {
     fn run(&self) {
         heap::print_chunks();
+    }
+}
+
+struct Nkvi;
+
+impl<'a> Nkvi {
+    const IDENT: &'static [u8] = b"nkvi";
+
+    fn parse(args_str: &'a [u8]) -> Result<'a> {
+        if args_str.len() != 0 {
+            Err("Command takes no arguments.")
+        } else {
+            Ok(Box::new(Self))
+        }
+    }
+}
+
+impl<'a> Command<'a> for Nkvi {
+    fn run(&self) {
+        nkvi::run();
     }
 }
 

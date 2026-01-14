@@ -1,14 +1,18 @@
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
 
 use crate::drivers::serial;
 
-pub fn run() -> ! {
+pub fn run() {
     serial::clear();
     let mut state = State::new();
     state.print_status_bar();
 
     loop {
         if let Some(input) = Input::poll(&state) {
+            if input == Input::Quit {
+                serial::clear();
+                break;
+            }
             input.exec(&mut state);
         }
     }
@@ -26,7 +30,6 @@ struct State {
 enum Mode {
     Normal,
     Insert,
-    Command,
 }
 
 impl State {
@@ -48,7 +51,6 @@ impl State {
         serial::write(match self.mode {
             Mode::Normal => b"(NORMAL)",
             Mode::Insert => b"[INSERT]",
-            Mode::Command => b"<COMMAND>",
         });
 
         serial::move_cursor(self.cursor_pos);
@@ -174,8 +176,8 @@ impl State {
         }
     }
 
-    fn type_char(&mut self, ch: u8) {
-        match ch {
+    fn type_char(&mut self, c: u8) {
+        match c {
             serial::DEL | serial::BACKSPACE => {
                 if self.cursor_dec_x() {
                     let (x, y) = self.cursor_pos;
@@ -194,19 +196,18 @@ impl State {
             }
             _ => {
                 let (x, y) = &mut self.cursor_pos;
-                if ch == b'\n' {
+                if c == b'\n' {
                     self.new_line();
-                } else if *x <= self.lines[*y].len() {
+                } else if *x < self.term_cols && *x <= self.lines[*y].len() {
                     *x += 1;
                     let line = &mut self.lines[*y];
 
                     if *x == line.len() + 1 {
-                        serial::write_char(ch);
-                        line.push(ch);
+                        serial::write_char(c);
+                        line.push(c);
                     } else {
-                        serial::insert_char(ch);
-                        line.insert(*x - 1, ch);
-                        //self.print_line(y);
+                        serial::insert_char(c);
+                        line.insert(*x - 1, c);
                     }
                 }
             }
@@ -266,6 +267,7 @@ impl State {
     }
 }
 
+#[derive(PartialEq)]
 enum Input {
     /// `true`: left, `false`: right
     Insert(bool),
@@ -275,37 +277,30 @@ enum Input {
     LineStart,
     Delete,
     Char(u8),
+    Save,
+    Quit,
 }
-
-const CTRL_N: u8 = 0x0E;
 
 impl Input {
     fn poll(state: &State) -> Option<Self> {
-        let ch = serial::read_char();
+        let c = serial::read_char();
         match state.mode {
-            Mode::Normal => match ch {
-                b'h' | b'j' | b'k' | b'l' => Some(Direction::from_char(ch).into()),
+            Mode::Normal => match c {
+                b'h' | b'j' | b'k' | b'l' => Some(Direction::from_char(c).into()),
                 b'i' => Some(Self::Insert(true)),
                 b'a' => Some(Self::Insert(false)),
                 b'x' => Some(Self::Delete),
                 b'$' => Some(Self::LineEnd),
                 b'^' => Some(Self::LineStart),
+                serial::CTRL_S => Some(Self::Save),
+                serial::CTRL_Q => Some(Self::Quit),
                 _ => None,
             },
-            Mode::Insert => match ch {
-                CTRL_N => Some(Mode::Normal.into()),
-                _ => Some(Self::Char(ch)),
+            Mode::Insert => match c {
+                serial::CTRL_N => Some(Mode::Normal.into()),
+                c if serial::is_typeable(c) => Some(Self::Char(c)),
+                _ => None,
             },
-            Mode::Command => {
-                let cmd = match ch {
-                    b'w' => todo!(),
-                    _ => panic!("invalid command"),
-                };
-                let ch = serial::read_char();
-                assert_eq!(ch, b'\n');
-                serial::write(b"\n");
-                cmd
-            }
         }
     }
 
@@ -317,11 +312,14 @@ impl Input {
             Self::LineEnd => state.to_line_end(),
             Self::LineStart => state.to_line_start(),
             Self::Delete => state.delete_char(),
-            Self::Char(ch) => state.type_char(ch),
+            Self::Char(c) => state.type_char(c),
+            Self::Save => todo!(),
+            Self::Quit => unreachable!(), // The quit input should have already been handled.
         }
     }
 }
 
+#[derive(PartialEq)]
 enum Direction {
     Left,
     Right,
@@ -330,8 +328,8 @@ enum Direction {
 }
 
 impl Direction {
-    fn from_char(ch: u8) -> Self {
-        match ch {
+    fn from_char(c: u8) -> Self {
+        match c {
             b'h' => Self::Left,
             b'l' => Self::Right,
             b'k' => Self::Up,

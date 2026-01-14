@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::result;
 
-use crate::drivers::{sd, serial};
+use crate::drivers::sd;
 
 pub trait File {
     fn read(&mut self) -> Result<()>;
