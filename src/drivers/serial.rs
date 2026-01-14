@@ -101,38 +101,56 @@ pub fn read_line() -> String {
     unsafe { String::from_utf8_unchecked(read_line_utf8()) }
 }
 
-const L_ARROW: &[u8] = b"\x1B[D";
-const R_ARROW: &[u8] = b"\x1B[C";
-const U_ARROW: &[u8] = b"\x1B[A";
-const D_ARROW: &[u8] = b"\x1B[B";
+pub fn insert_char(ch: u8) {
+    // Inserts whitespace.
+    write(b"\x1B[@");
+    write_char(ch);
+}
+
+pub fn delete_char() {
+    write(b"\x1B[P");
+}
 
 pub fn cursor_left() {
-    write(L_ARROW);
+    write(b"\x1B[D");
 }
 
 pub fn cursor_right() {
-    write(R_ARROW);
+    write(b"\x1B[C");
 }
 
 pub fn cursor_up() {
-    write(U_ARROW);
+    write(b"\x1B[A");
 }
 
 pub fn cursor_down() {
-    write(D_ARROW);
+    write(b"\x1B[B");
 }
 
+/// pos: (x, y)
 pub fn move_cursor(pos: (usize, usize)) {
-    print!("\x1B[{};{}H", pos.0, pos.1);
+    print!("\x1B[{};{}H", pos.1 + 1, pos.0 + 1);
 }
 
 pub fn cursor_home() {
-    move_cursor((1, 1));
+    move_cursor((0, 0));
+}
+
+pub fn block_cursor() {
+    write(b"\x1B[2 q");
+}
+
+pub fn line_cursor() {
+    write(b"\x1B[6 q");
 }
 
 pub fn clear() {
     write(b"\x1B[2J");
     cursor_home();
+}
+
+pub fn clear_line() {
+    write(b"\x1B[2K");
 }
 
 /// -> (rows, cols)
