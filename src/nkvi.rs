@@ -10,12 +10,13 @@ pub fn run() {
     loop {
         if let Some(input) = Input::poll(&state) {
             if input == Input::Quit {
-                serial::clear();
                 break;
             }
             input.exec(&mut state);
         }
     }
+
+    serial::clear();
 }
 
 struct State {

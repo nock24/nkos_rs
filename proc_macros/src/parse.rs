@@ -1,5 +1,5 @@
 use syn::{
-    Ident, LitInt, Token, Type, Visibility, braced, bracketed,
+    Expr, Ident, LitInt, Token, Type, Visibility, braced, bracketed,
     parse::{Parse, ParseStream},
 };
 
@@ -67,6 +67,29 @@ impl Parse for SectorLayout {
             let _ = contents.parse::<Token![,]>();
         }
 
-        Ok(SectorLayout { vis, name, fields })
+        Ok(Self { vis, name, fields })
+    }
+}
+
+pub struct CmdTryFroms {
+    pub ident: Expr,
+    pub args: Expr,
+    pub cmds: Vec<Type>,
+}
+
+impl Parse for CmdTryFroms {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let ident = input.parse::<Expr>()?;
+        input.parse::<Token![,]>()?;
+        let args = input.parse::<Expr>()?;
+        input.parse::<Token![,]>()?;
+
+        let mut cmds = Vec::new();
+        while !input.is_empty() {
+            cmds.push(input.parse::<Type>()?);
+            input.parse::<Token![,]>()?;
+        }
+
+        Ok(Self { ident, args, cmds })
     }
 }

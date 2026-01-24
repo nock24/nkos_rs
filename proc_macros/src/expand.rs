@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, Type};
 
-use crate::parse::{FieldType, SectorLayout};
+use crate::parse::{CmdTryFroms, FieldType, SectorLayout};
 
 const SECTOR_SIZE: usize = 512;
 
@@ -401,5 +401,25 @@ fn write_int_expr(bits: u32, off: TokenStream) -> TokenStream {
             buf[#off..#off + 8].copy_from_slice(&b);
         }},
         _ => quote! { compile_error!("unsupported int width"); },
+    }
+}
+
+pub fn expand_cmd_try_froms(cmd_try_froms: CmdTryFroms) -> TokenStream {
+    let ident = cmd_try_froms.ident;
+    let args = cmd_try_froms.args;
+    let cmds = cmd_try_froms.cmds;
+
+    let mut matches = Vec::new();
+    for cmd in cmds.iter() {
+        matches.push(quote! {
+            #cmd::IDENT => Ok(Box::new(#cmd::try_from(#args)?) as Box<dyn Cmd>),
+        });
+    }
+
+    quote! {
+        match #ident {
+            #(#matches)*
+            _ => Err("invalid command"),
+        }
     }
 }
